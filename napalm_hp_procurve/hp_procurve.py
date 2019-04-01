@@ -25,7 +25,7 @@ from napalm.base.helpers import (
 logger = logging.getLogger(__name__)
 
 
-class HpProcurvePriviledgeError(Exception):
+class HpProcurvePrivilegeError(Exception):
     pass
 
 class HpMacFormatError(Exception):
@@ -90,7 +90,7 @@ class HpProcurveDriver(NetworkDriver):
             'secret': '',
             'verbose': False,
             'keepalive': 30,
-            'global_delay_factor': 2,
+            'global_delay_factor': 3,
             'use_keys': False,
             'key_file': None,
             'ssh_strict': False,
@@ -118,7 +118,6 @@ class HpProcurveDriver(NetworkDriver):
                 pass
         if self.ssh_proxy_file:
             self.netmiko_optional_args['ssh_config_file'] = self.ssh_proxy_file
-        self.current_user_level = self.get_current_priviledge()
 
     
     def _generate_ssh_proxy_file(self):
@@ -143,20 +142,39 @@ class HpProcurveDriver(NetworkDriver):
                 username = self.username,
                 password = self.password,
                 **self.netmiko_optional_args)
+        """ Get current privilege """
+        self.get_current_privilege()
 
     def close(self):
         """Close the connection to the device."""
         self.device.disconnect()
 
+    def _send_command(self, command):
+        """ Wrapper for self.device.send.command().
+        If command is a list will iterate through commands until valid command.
+        """
+        try:
+            if isinstance(command, list):
+                for cmd in command:
+                    output = self.device.send_command(cmd)
+                    if "% Unrecognized" not in output:
+                        break
+            else:
+                output = self.device.send_command(command)
+            return output
+        except (socket.error, EOFError) as e:
+            raise ConnectionClosedException(str(e))
 
-    def get_current_priviledge(self):
-        """ Get current privilege of the user """
+    def get_current_privilege(self):
+        """ Get current privilege """
         raw_out = self._send_command('show telnet')
         show_telnet_entries = textfsm_extractor(self, "show_telnet", raw_out)
-        self.current_user_level = disp_usr_entries[0]['user_level']
+        for row in show_telnet_entries:
+            if row['session'].startswith('**'): 
+                self.current_user_level = row['user_level']
         return self.current_user_level
 
-    def priviledge_escalation(self, os_version=''):
+    def privilege_escalation(self, os_version=''):
         """ Check userlevel mode with command 'show telnet '
         Procurve Privilege levels: Operator, Manager, Superuser
         
@@ -180,17 +198,17 @@ class HpProcurveDriver(NetworkDriver):
        
         """
         os_version = os_version
-        
-        if self.current_user_level == 'Manager': 
+
+        if self.current_user_level.lower() == 'manager': 
             msg = f' Already in user privilege level: {self.current_user_level}'
             logger.info(msg); print(msg)
             return 0
-        elif self.current_user_level in ['Operator' ]: 
+        elif self.current_user_level.lower() in ['operator' ]: 
             # Escalate user level in order to have all commands available
-            if os_version:
-                os_version = os_version
-            else:
-                os_version = self.get_version()['os_version']
+            # if os_version:
+                # os_version = os_version
+            # else:
+                # os_version = self.get_version()['os_version']
             cmd = 'enable'
             l1_password = self.device.password
             l2_password = self.device.secret
@@ -198,15 +216,95 @@ class HpProcurveDriver(NetworkDriver):
             self.device.send_command_expect(self.username, expect_string='assword:')
             self.device.send_command_timing(l2_password, strip_command=True)
             # Check and confirm user level mode
-            raw_out = self._send_command('show telnet')
-            show_telnet_entries = textfsm_extractor(self, "show_telnet", raw_out)
-            self.current_user_level = disp_usr_entries[0]['user_level']
-            if user_level == 'Manager': 
-                msg = f' --- Changed to user level: {user_level} ---' 
+            self.get_current_privilege()
+            if self.current_user_level.lower() == 'manager': 
+                msg = f' --- Changed to user level: {self.current_user_level} ---' 
                 logger.info(msg); print(msg)
                 return 0
             else:
-                raise HpProcurvePriviledgeError
+                raise HpProcurvePrivilegeError
         
 
+    def trace_mac_address(self, mac_address):
+        """ Search for mac_address, get switch port and return lldp/cdp
+        neighbour of that port """
+        try:
+            self.privilege_escalation()
+            self.disable_pageing()
+            mac_address = self.hp_mac_format(mac_address)
+            raw_out = self._send_command('show mac-address ' + mac_address)
+            # raw_table_out = self._send_command('show mac-address')
+            if ' not found.' in raw_out:
+                raise HpNoMacFound
+            mac_address_entries = textfsm_extractor(self, "show_mac_address", raw_out)
+            # mac_table = self.get_mac_address_table(raw_mac_table=raw_out)
+            msg = f' --- Found mac address --- \n'
+            print(msg); logger.info(msg)
+            print(dumps(mac_address_entries, sort_keys=True, indent=4, separators=(',', ': ')))
+            port = mac_address_entries[0]['port']
+            show_lldp_entries = self.get_lldp_neighbors_detail(interface=port)
+            msg = f' --- Neighbour System Name: {show_lldp_entries[0]["system_name"]}'
+            print(msg); logger.info(msg)
+            return show_lldp_entries[0]['system_name'].lower()
+        except HpMacFormatError as e:
+            msg = f'Unrecognised Mac format: {mac_address}'
+            logger.error(msg)
+            print(msg)
+        except HpNoMacFound as e:
+            msg = f' --- No mac address {mac_address} found: {e} ---'
+            print(msg)
+            logger.info(msg)
+            return 'No mac address found'
+        except Exception as e:
+            raise e
+
+    def hp_mac_format(self, mac):
+        """ return hp mac format """
+        if ':' in mac:
+            # 04:4b:ed:31:75:cd -> 044bed3175cd
+            temp_mac = "".join(mac.split(':'))
+        elif '-' in mac:
+            # 04-4b-ed-31-75-cd -> 044bed3175cd
+            # 044b-ed31-75cd -> 044bed3175cd
+            temp_mac = "".join(mac.split('-'))
+        else:
+            # match '044bed3175cd'
+            m = re.match(r'.*([a-f,A-F,0-9]{12})', mac)
+            if m:
+                temp_mac = mac
+            else:
+                raise HpMacFormatError(f'Unrecognised Mac format: {mac}')
+        out_mac = ''
+        for idx, value in enumerate(temp_mac):
+            if idx in [4,8]:
+                out_mac += '-'
+            out_mac += value
+        return str(out_mac)
+
+    def disable_pageing(self):
+        """ Disable pageing on the device is might be blocked by AAA server so
+        check privilege level before this """
+        try:
+            if self.current_user_level.lower() == 'manager':
+                out_disable_pageing = self.device.send_command('no page')
+            else:
+                self.privilege_escalation()
+        except Exception as e:
+            print("Disable Pageing cli command error: {}".format(out_disable_pageing))
+            raise e
+
+    def get_version(self):
+        """ Return procurve version, vendor, model and uptime.  """
+        raw_out = self._send_command('show version')
+        version_entries = textfsm_extractor(self, "show_version", raw_out)
+        version = version_entries[0]['os_version']
+        return str(version)
+
+
+    def get_lldp_neighbors_detail(self, interface=""):
+        """ Get lldp neighbor details """
+        raw_lldp_out = self._send_command('show lldp info remote-device ' + interface)
+        show_lldp_entries = textfsm_extractor(self, "show_lldp_info_remote_device", raw_lldp_out)
+        print(dumps(show_lldp_entries, sort_keys=True, indent=4, separators=(',', ': ')))
+        return show_lldp_entries
 
