@@ -19,7 +19,7 @@ Table of implemented methods:
     * get_interfaces_ip             ❌
     * get_ipv6_neighbors_table      ❌
     * get_lldp_neighbors            ❌
-    * get_lldp_neighbors_detail     ❌
+    * get_lldp_neighbors_detail     ✅
     * get_mac_address_table         ❌
     * get_network_instances         ❌
     * get_ntp_peers                 ❌
@@ -35,6 +35,19 @@ Table of implemented methods:
     * ping                          ❌
     * traceroute                    ❌
                                     
+Additional Methods:
+
+    * _generate_ssh_proxy_file      ✅
+    * _send_command                 ✅
+    * get_current_priviledge        ✅
+    * priviledge_escalation         ✅
+    * trace_mac_address             ✅
+    * hp_mac_format                 ✅
+    * disable_pageing               ✅
+    * get_version                   ✅
+
+
+
 
 Installation
 ============
