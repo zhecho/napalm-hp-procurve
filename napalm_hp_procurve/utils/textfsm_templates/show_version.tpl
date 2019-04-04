@@ -1,7 +1,7 @@
 # 
 # Parse comware "show version
 # 
-#Image stamp:    /sw/code/build/rmm                      
+#Image stamp:    /sw/code/build/xxx
 #                Mar 31 2016 22:48:02                    
 #                L.11.45                                 
 #                97

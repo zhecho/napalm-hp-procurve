@@ -2,9 +2,9 @@
 # Procurve "show mac-address xxxx-xxxx"
 #
 #                                                                    
-# Status and Counters - Address Table - d4c9ef-e358ac                
+# Status and Counters - Address Table - d4c9ef-e35xxx
 #                                                                    
-#  MAC Address : d4c9ef-e358ac                                       
+#  MAC Address : d4c9ef-e35xxx                                       
 #  Located on Port : C14                                             
 #                                                                    
 #

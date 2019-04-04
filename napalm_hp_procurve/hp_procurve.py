@@ -167,7 +167,7 @@ class HpProcurveDriver(NetworkDriver):
 
     def get_current_privilege(self):
         """ Get current privilege """
-        raw_out = self._send_command('show telnet')
+        raw_out = self.device.send_command_timing('show telnet', delay_factor=2)
         show_telnet_entries = textfsm_extractor(self, "show_telnet", raw_out)
         for row in show_telnet_entries:
             if row['session'].startswith('**'): 
@@ -228,33 +228,49 @@ class HpProcurveDriver(NetworkDriver):
     def trace_mac_address(self, mac_address):
         """ Search for mac_address, get switch port and return lldp/cdp
         neighbour of that port """
+        result = { 
+                'found': False,
+                'cdp_answer': False,
+                'lldp_answer': False,
+                'lldp_local_port': '',
+                'lldp_remote_port': '',
+                'lldp_next_device': '',
+                'cdp_local_port': '',
+                'cdp_remote_port': '',
+                'cdp_next_device': '',
+                }
         try:
             self.privilege_escalation()
             self.disable_pageing()
             mac_address = self.hp_mac_format(mac_address)
-            raw_out = self._send_command('show mac-address ' + mac_address)
-            # raw_table_out = self._send_command('show mac-address')
+            raw_out = self.device.send_command_timing('show mac-address ' + mac_address, delay_factor=2)
             if ' not found.' in raw_out:
                 raise HpNoMacFound
+            else:
+                msg = f' --- Found mac address --- \n'
+                print(msg); logger.info(msg)
+                result['found'] = True
             mac_address_entries = textfsm_extractor(self, "show_mac_address", raw_out)
-            # mac_table = self.get_mac_address_table(raw_mac_table=raw_out)
-            msg = f' --- Found mac address --- \n'
-            print(msg); logger.info(msg)
             print(dumps(mac_address_entries, sort_keys=True, indent=4, separators=(',', ': ')))
             port = mac_address_entries[0]['port']
+            result['local_port'] = port
             show_lldp_entries = self.get_lldp_neighbors_detail(interface=port)
-            msg = f' --- Neighbour System Name: {show_lldp_entries[0]["system_name"]}'
-            print(msg); logger.info(msg)
-            return show_lldp_entries[0]['system_name'].lower()
+            if show_lldp_entries:
+                result['lldp_answer'] = True
+                result['next_device'] = show_lldp_entries[0]['system_name']
+                msg = f' --- Neighbour System Name: {result["next_device"]}'
+                print(msg); logger.info(msg)
+            return result
         except HpMacFormatError as e:
             msg = f'Unrecognised Mac format: {mac_address}'
             logger.error(msg)
             print(msg)
+            return result
         except HpNoMacFound as e:
             msg = f' --- No mac address {mac_address} found: {e} ---'
             print(msg)
             logger.info(msg)
-            return 'No mac address found'
+            return result
         except Exception as e:
             raise e
 
@@ -305,6 +321,14 @@ class HpProcurveDriver(NetworkDriver):
         """ Get lldp neighbor details """
         raw_lldp_out = self._send_command('show lldp info remote-device ' + interface)
         show_lldp_entries = textfsm_extractor(self, "show_lldp_info_remote_device", raw_lldp_out)
+        print(f' --- LLDP neighbour info ---\n')
         print(dumps(show_lldp_entries, sort_keys=True, indent=4, separators=(',', ': ')))
+        if len(show_lldp_entries) == 0:
+            return {}
         return show_lldp_entries
+
+    def get_cdp_neighbors_detail(self, interface=""):
+        """ cdp cli commands depends on comware version """
+        # TODO  not implemented 
+        return False
 

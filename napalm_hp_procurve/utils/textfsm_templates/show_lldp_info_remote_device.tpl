@@ -5,7 +5,7 @@
 #                                                                                          
 #  Local Port   : B17                                                                      
 #  ChassisType  : local                                                                    
-#  ChassisId    : CN51G8M1H7                                                               
+#  ChassisId    : CN51G8XXXX
 #  PortType     : local                                                                    
 #  PortId       : eth0                                                                     
 #  SysName      :                                                                          
@@ -22,11 +22,11 @@
 #------------------------------------------------------------------------------            
 #  Local Port   : B17                                                                      
 #  ChassisType  : mac-address                                                              
-#  ChassisId    : d4 c9 ef e3 58 ad                                                        
+#  ChassisId    : d4 c9 ef xx yy yy                                                        
 #  PortType     : mac-address                                                              
-#  PortId       : d4 c9 ef e3 58 ad                                                        
-#  SysName      : @DE-REM (10.108.3.175)                                                   
-#  System Descr : HP AP Controlled,CN51G8M1H7,J9846-60001:65-A,6.6.8.1-23399               
+#  PortId       : d4 c9 ef xx yy yy                                                        
+#  SysName      : @la-la(10.108.3.175)                                                   
+#  System Descr : HP AP Controlled,CN51G8XXXX,J9846-60001:65-A,6.6.8.1-23399               
 #  PortDescr    : Port 1                                                                   
 #                                                                                          
 #  System Capabilities Supported  : wlan-access-point                                      
