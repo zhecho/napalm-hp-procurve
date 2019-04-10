@@ -90,7 +90,7 @@ class HpProcurveDriver(NetworkDriver):
             'secret': '',
             'verbose': False,
             'keepalive': 30,
-            'global_delay_factor': 3,
+            'global_delay_factor': 2,
             'use_keys': False,
             'key_file': None,
             'ssh_strict': False,
@@ -166,9 +166,15 @@ class HpProcurveDriver(NetworkDriver):
             raise ConnectionClosedException(str(e))
 
     def get_current_privilege(self):
-        """ Get current privilege """
+        """ Get current privilege 
+            "show telnet" output depends on os_version of the device !!!@#!@#!#$
+        """
         raw_out = self.device.send_command_timing('show telnet', delay_factor=2)
-        show_telnet_entries = textfsm_extractor(self, "show_telnet", raw_out)
+        dev_version = self.get_version()
+        if dev_version.startswith('K.'):
+            show_telnet_entries = textfsm_extractor(self, "show_telnet_vK", raw_out)
+        else:
+            show_telnet_entries = textfsm_extractor(self, "show_telnet", raw_out)
         for row in show_telnet_entries:
             if row['session'].startswith('**'): 
                 self.current_user_level = row['user_level']
@@ -223,7 +229,123 @@ class HpProcurveDriver(NetworkDriver):
                 return 0
             else:
                 raise HpProcurvePrivilegeError
+
+
+    def get_mac_address_table(self, raw_mac_table=None):
+
+        """
+        Returns a lists of dictionaries. Each dictionary represents an entry in the MAC Address
+        Table, having the following keys:
+            * mac (string)
+            * interface (string)
+            * vlan (int)
+            * active (boolean)
+            * static (boolean)
+            * moves (int)
+            * last_move (float)
+
+        However, please note that not all vendors provide all these details.
+        E.g.: field last_move is not available on JUNOS devices etc.
+
+        Example::
+
+            [
+                {
+                    'mac'       : '00:1C:58:29:4A:71',
+                    'interface' : 'Ethernet47',
+                    'vlan'      : 100,
+                    'static'    : False,
+                    'active'    : True,
+                    'moves'     : 1,
+                    'last_move' : 1454417742.58
+                },
+                {
+                    'mac'       : '00:1C:58:29:4A:C1',
+                    'interface' : 'xe-1/0/1',
+                    'vlan'       : 100,
+                    'moves'     : 2,
+                    'last_move' : 1453191948.11
+                },
+                {
+                    'mac'       : '00:1C:58:29:4A:C2',
+                    'interface' : 'ae7.900',
+                    'vlan'      : 900,
+                    'static'    : False,
+                    'active'    : True,
+                    'moves'     : None,
+                    'last_move' : None
+                }
+            ]
+        """
+        if raw_mac_table is not None:
+            if 'No mac address found' in raw_mac_table:
+                return ['No mac address found']
+            out_mac_table = raw_mac_table
+        else:
+            # Disable Pageing of the device
+            self.disable_pageing()
+        raw_out = self._send_command('show mac-address')
+        dev_version = self.get_version()
+        if dev_version.startswith('K.'):
+            mac_table_entries = textfsm_extractor(self, "show_mac_address_all_vK", raw_out)
+        else: 
+            mac_table_entries = textfsm_extractor(self, "show_mac_address_all", raw_out)
+        # owerwrite some values in order to be compliant 
+        for row in mac_table_entries:                                            
+            row['mac'] = self.format_mac_cisco_way(row['mac'])                   
+            row['interface'] = self.normalize_port_name(row['interface'])        
+        return mac_table_entries
+
+
+    def normalize_port_name(self,res_port):
+        """ Convert Short HP interface names to long (ex: BAGG519 --> Bridge-Aggregation 519)"""
+        raise NotImplementedError
+        # if re.match('^BAGG\d+',res_port):
+        #     # format port BAGG519 --> Bridge-Aggregation 519
+        #     agg_port_name = res_port.replace('BAGG','Bridge-Aggregation ')
+        #     return agg_port_name
+        # elif re.match('^Bridge-Aggregation\d*',res_port):
+        #     agg_port_name = res_port
+        #     return agg_port_name
+        # elif re.match('^XGE\d.*',res_port):
+        #     # format port XGE1/2/0/7 --> Ten-GigabitEthernet 1/2/0/7
+        #     port_name = res_port.replace('XGE','Ten-GigabitEthernet ')
+        #     # print(" --- Port Name: "+'\x1b[1;32;40m' +"{}" .format(port_name)+'\x1b[0m')
+        #     return port_name
+        # elif re.match('^GE\d.*',res_port):
+        #     # format port GE1/5/0/19 --> GigabitEthernet 1/5/0/19
+        #     port_name = res_port.replace('GE','GigabitEthernet ')
+        #     # print(" --- Port Name: "+'\x1b[1;32;40m' +"{}" .format(port_name)+'\x1b[0m')
+        #     return port_name
+        # elif re.match('^Vlan\d+',res_port):
+        #     # format port Vlan4003 --> Vlan-interface4003
+        #     port_name = res_port.replace('Vlan','Vlan-interface')
+        #     # print(" --- Port Name: "+'\x1b[1;32;40m' +"{}" .format(port_name)+'\x1b[0m')
+        #     return port_name
+        # else:
+        #     return res_port 
+        #     # print('\x1b[1;31;40m' + " --- Unknown Port Name: {} --- ".format(res_port)+'\x1b[0m')
+
+
+    
+    def get_active_physical_ports(self, aggregation_port):
+        """ Return textFSM table with physical ports joined as "aggregation_port" """
+        from IPython import embed; embed()
+        from IPython.core import debugger; debug = debugger.Pdb().set_trace; debug()
+        raw_out = self._send_command('display link-aggregation verbose ' + str(aggregation_port))
+        port_entries = textfsm_extractor(self, "display_link_aggregation_verbose", raw_out)
+        a_ports = list()
+        for row in port_entries:
+            # Return only active ports
+            if row['status'].lower() == 's':
+                a_ports.append(self.normalize_port_name(row['port_name']))
         
+        if a_ports:
+            print(f' --- Active ports of the aggregation_port {aggregation_port} ---')
+            print(dumps(a_ports, sort_keys=True, indent=4, separators=(',', ': ')))
+            return a_ports
+        else:
+            raise HpNoActiePortsInAggregation
 
     def trace_mac_address(self, mac_address):
         """ Search for mac_address, get switch port and return lldp/cdp
@@ -232,33 +354,40 @@ class HpProcurveDriver(NetworkDriver):
                 'found': False,
                 'cdp_answer': False,
                 'lldp_answer': False,
-                'lldp_local_port': '',
-                'lldp_remote_port': '',
-                'lldp_next_device': '',
-                'cdp_local_port': '',
-                'cdp_remote_port': '',
-                'cdp_next_device': '',
+                'local_port': '',
+                'remote_port': '',
+                'next_device': '',
                 }
         try:
             self.privilege_escalation()
             self.disable_pageing()
             mac_address = self.hp_mac_format(mac_address)
-            raw_out = self.device.send_command_timing('show mac-address ' + mac_address, delay_factor=2)
-            if ' not found.' in raw_out:
+            raw_out = self._send_command('show mac-address ' + mac_address)
+            dev_version = self.get_version()
+            if dev_version.startswith('K.'):
+                mac_address_entries = textfsm_extractor(self, "show_mac_address_vK", raw_out)
+            else: 
+                mac_address_entries = textfsm_extractor(self, "show_mac_address", raw_out)
+            if ' not found.' in raw_out or len(mac_address_entries) == 0:
                 raise HpNoMacFound
             else:
-                msg = f' --- Found mac address --- \n'
+                msg = f' --- Found {mac_address} mac address --- \n'
                 print(msg); logger.info(msg)
                 result['found'] = True
-            mac_address_entries = textfsm_extractor(self, "show_mac_address", raw_out)
-            print(dumps(mac_address_entries, sort_keys=True, indent=4, separators=(',', ': ')))
+            # print(dumps(mac_address_entries, sort_keys=True, indent=4, separators=(',', ': ')))
+
             port = mac_address_entries[0]['port']
+            # check if port is aggregated
+            if port.startswith('Trk'):
+                port = self.get_active_physical_ports(port)[0]
+
             result['local_port'] = port
             show_lldp_entries = self.get_lldp_neighbors_detail(interface=port)
             if show_lldp_entries:
                 result['lldp_answer'] = True
                 result['next_device'] = show_lldp_entries[0]['system_name']
                 msg = f' --- Neighbour System Name: {result["next_device"]}'
+                msg += f'\n --- Neighbor System Description: {show_lldp_entries[0]["system_description"]}'
                 print(msg); logger.info(msg)
             return result
         except HpMacFormatError as e:
@@ -331,4 +460,15 @@ class HpProcurveDriver(NetworkDriver):
         """ cdp cli commands depends on comware version """
         # TODO  not implemented 
         return False
+
+    def format_mac_cisco_way(self, macAddress):
+        """ format mac address with ":" AA:BB:CC:DD:EE:FF """
+        macAddress = macAddress.replace('-','')
+        return macAddress[:2] +\
+                ':'+macAddress[2:4]+\
+                ':'+macAddress[4:6]+\
+                ':'+macAddress[6:8]+\
+                ':'+macAddress[8:10]+\
+                ':'+macAddress[10:12]
+
 
