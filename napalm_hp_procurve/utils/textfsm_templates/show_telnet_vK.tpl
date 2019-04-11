@@ -1,6 +1,8 @@
 # 
-# Procurve version K.XX "show telnet"
-#
+# Procurve with firmware versions (K.XX, YA.XX, WC.XX)
+# 
+# "show telnet"
+#                   
 # Telnet Activity                                                            
 #                                                                            
 # Source IP Selection: Outgoing Interface                                    

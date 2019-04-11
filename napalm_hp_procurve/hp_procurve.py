@@ -160,7 +160,10 @@ class HpProcurveDriver(NetworkDriver):
                     if "% Unrecognized" not in output:
                         break
             else:
-                output = self.device.send_command(command)
+                # TODO: Why send_command_timing() works and send_command()
+                # doesn't 
+                # output = self.device.send_command(command)
+                output = self.device.send_command_timing(command)
             return output
         except (socket.error, EOFError) as e:
             raise ConnectionClosedException(str(e))
@@ -171,7 +174,7 @@ class HpProcurveDriver(NetworkDriver):
         """
         raw_out = self.device.send_command_timing('show telnet', delay_factor=2)
         dev_version = self.get_version()
-        if dev_version.startswith('K.'):
+        if dev_version.startswith(('K.','YA.','WC.')):
             show_telnet_entries = textfsm_extractor(self, "show_telnet_vK", raw_out)
         else:
             show_telnet_entries = textfsm_extractor(self, "show_telnet", raw_out)
@@ -357,6 +360,7 @@ class HpProcurveDriver(NetworkDriver):
                 'local_port': '',
                 'remote_port': '',
                 'next_device': '',
+                'next_device_descr': '',
                 }
         try:
             self.privilege_escalation()
@@ -386,6 +390,7 @@ class HpProcurveDriver(NetworkDriver):
             if show_lldp_entries:
                 result['lldp_answer'] = True
                 result['next_device'] = show_lldp_entries[0]['system_name']
+                result['next_device_descr'] = show_lldp_entries[0]['system_description']
                 msg = f' --- Neighbour System Name: {result["next_device"]}'
                 msg += f'\n --- Neighbor System Description: {show_lldp_entries[0]["system_description"]}'
                 print(msg); logger.info(msg)
@@ -447,7 +452,23 @@ class HpProcurveDriver(NetworkDriver):
 
 
     def get_lldp_neighbors_detail(self, interface=""):
-        """ Get lldp neighbor details """
+        """ Get lldp neighbor details 
+        return textfsm table with the following row:
+        {
+            local_port
+            chassis_type
+            chassis_id
+            port_type
+            port_id
+            system_name
+            system_description
+            port_description
+            system_capabilities_supported
+            system_capabilities_enabled
+            remote_mgmt_ip_family
+            remote_mgmt_ip
+        }
+        """
         raw_lldp_out = self._send_command('show lldp info remote-device ' + interface)
         show_lldp_entries = textfsm_extractor(self, "show_lldp_info_remote_device", raw_lldp_out)
         print(f' --- LLDP neighbour info ---\n')

@@ -6,11 +6,11 @@
 #                L.11.45                                 
 #                97
 #Boot Image:     Primary
-Value OS_VERSION (\S+\.\S+\.\S+)
+Value OS_VERSION (\S+\.\S+\.\S+.*)
 Value OS_VERSION_RELEASE (\S+)
 
 Start
-  ^Image\s+stapm\:\s+\S+
+  ^Image\s+stamp\:
   ^\s+\S+\s+\S+\s+\S+\s+\S+
   ^\s+${OS_VERSION}
   ^\s+${OS_VERSION_RELEASE}
