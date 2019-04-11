@@ -289,7 +289,7 @@ class HpProcurveDriver(NetworkDriver):
             self.disable_pageing()
         raw_out = self._send_command('show mac-address')
         dev_version = self.get_version()
-        if dev_version.startswith('K.'):
+        if dev_version.startswith(('K.','YA.','WC.')):
             mac_table_entries = textfsm_extractor(self, "show_mac_address_all_vK", raw_out)
         else: 
             mac_table_entries = textfsm_extractor(self, "show_mac_address_all", raw_out)
@@ -368,7 +368,7 @@ class HpProcurveDriver(NetworkDriver):
             mac_address = self.hp_mac_format(mac_address)
             raw_out = self._send_command('show mac-address ' + mac_address)
             dev_version = self.get_version()
-            if dev_version.startswith('K.'):
+            if dev_version.startswith(('K.','YA.','WC.')):
                 mac_address_entries = textfsm_extractor(self, "show_mac_address_vK", raw_out)
             else: 
                 mac_address_entries = textfsm_extractor(self, "show_mac_address", raw_out)
